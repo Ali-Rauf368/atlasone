@@ -1,4 +1,5 @@
 import { Queue, Worker } from "bullmq";
+import { Redis } from "ioredis";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
 import { audit } from "../models/audit.js";
@@ -12,7 +13,11 @@ import { detectAnomalies } from "./anomaly.js";
  * Without REDIS_URL, falls back to in-process timers so local dev still works.
  */
 const SYSTEM = { uid: "system", name: "AtlasOne scheduler", roles: ["SYSTEM"] };
-const connection = env.redisUrl ? { url: env.redisUrl } : null;
+// BullMQ takes ioredis options or instances — a `{ url }` object is NOT a valid option and silently means localhost:6379.
+// Workers need maxRetriesPerRequest: null (blocking commands).
+const redisConn = () => new Redis(env.redisUrl!, { maxRetriesPerRequest: null });
+const connection = env.redisUrl ? redisConn() : null;
+connection?.on("error", (e) => console.warn("bullmq redis:", e.message));
 const queue = connection ? new Queue("atlas", { connection }) : null;
 
 export async function scheduleSlaCheck(stepId: string, dueAt: Date) {
@@ -53,5 +58,5 @@ export async function startJobs() {
   new Worker("atlas", async (job) => {
     if (job.name === "sla-check") return slaCheck(job.data.stepId);
     if (job.name === "anomaly-scan") return anomalyScan();
-  }, { connection, concurrency: 5 }).on("failed", (j, e) => console.error(`job ${j?.name} failed:`, e.message));
+  }, { connection: redisConn(), concurrency: 5 }).on("failed", (j, e) => console.error(`job ${j?.name} failed:`, e.message));
 }

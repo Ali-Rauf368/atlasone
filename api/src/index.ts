@@ -9,8 +9,9 @@ import { prisma } from "./lib/db.js";
 await mongoose.connect(env.mongoUrl);
 const server = http.createServer(app);
 initRealtime(server);
-await startJobs();
 server.listen(env.port, () => console.log(`AtlasOne API on :${env.port} · docs at /api/docs`));
+// Background jobs must never block or crash request serving (e.g. Redis briefly unavailable)
+startJobs().then(() => console.log(`jobs: ${env.redisUrl ? "BullMQ on Redis" : "in-process fallback"}`)).catch((e) => console.error("jobs failed to start:", e.message));
 
 // Graceful shutdown for containers / rolling deploys
 for (const sig of ["SIGTERM", "SIGINT"] as const)
