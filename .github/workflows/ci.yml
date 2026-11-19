@@ -29,12 +29,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: docker compose --profile app up -d --build
+      - name: Wait for app
+        run: timeout 180 sh -c 'until curl -sf localhost:4000/health; do sleep 3; done'
       - name: Seed demo data
         working-directory: api
-        run: npm ci && npx prisma generate && npm run db:seed
+        # db push is idempotent; running it here removes any dependency on the API container's startup timing
+        run: npm ci && npx prisma generate && npx prisma db push --skip-generate && npm run db:seed
         env: { DATABASE_URL: "postgresql://atlas:atlas@localhost:5432/atlasone" }
-      - name: Wait for app
-        run: timeout 120 sh -c 'until curl -sf localhost:4000/health; do sleep 3; done'
       - working-directory: e2e
         run: npm ci && npx playwright install --with-deps chromium && npx playwright test
         env: { BASE_URL: "http://localhost:8081" }
