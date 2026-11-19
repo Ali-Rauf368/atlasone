@@ -46,3 +46,13 @@ describe("approver checks", () => {
     expect(checkBudget(1000, 400, 600.01)).toMatchObject({ ok: false, error: expect.stringMatching(/600.00/) });
   });
 });
+
+describe("background jobs", () => {
+  it("uses BullMQ-legal custom job ids (no ':', not an integer)", async () => {
+    process.env.REDIS_URL = "";
+    const { slaJobId } = await import("../src/lib/jobs.js");
+    const id = slaJobId("clx123abc");
+    expect(id).not.toContain(":");
+    expect(Number.isInteger(Number(id))).toBe(false);
+  });
+});

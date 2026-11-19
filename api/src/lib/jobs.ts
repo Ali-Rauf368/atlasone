@@ -22,9 +22,16 @@ const queue = connection ? new Queue("atlas", { connection }) : null;
 
 export async function scheduleSlaCheck(stepId: string, dueAt: Date) {
   const delay = Math.max(0, dueAt.getTime() - Date.now());
-  if (queue) await queue.add("sla-check", { stepId }, { delay, jobId: `sla:${stepId}`, removeOnComplete: true, attempts: 3, backoff: { type: "exponential", delay: 5000 } });
-  else setTimeout(() => slaCheck(stepId).catch(console.error), Math.min(delay, 2 ** 31 - 1)).unref();
+  if (queue) {
+    try { await queue.add("sla-check", { stepId }, { delay, jobId: slaJobId(stepId), removeOnComplete: true, attempts: 3, backoff: { type: "exponential", delay: 5000 } }); return; }
+    // Scheduling must never fail the business action (creating/approving a PO); fall back to an in-process timer
+    catch (e) { console.error("sla-check scheduling failed, using in-process timer:", (e as Error).message); }
+  }
+  setTimeout(() => slaCheck(stepId).catch(console.error), Math.min(delay, 2 ** 31 - 1)).unref();
 }
+
+/** BullMQ custom job ids must not contain ":" (and must not be integers). */
+export const slaJobId = (stepId: string) => `sla-${stepId}`;
 
 export async function slaCheck(stepId: string) {
   const step = await prisma.approvalStep.findUnique({ where: { id: stepId }, include: { po: true } });
