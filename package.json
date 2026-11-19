@@ -1,0 +1,14 @@
+{
+  "name": "atlasone",
+  "private": true,
+  "description": "AtlasOne – Global Enterprise Intelligence Platform",
+  "scripts": {
+    "dev": "bash scripts/dev-local.sh",
+    "db:stop": "pg_ctl=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)/pg_ctl; $pg_ctl -D .local/pg stop -m fast",
+    "db:reset": "npm run db:stop; rm -rf .local/pg && echo 'Local database removed; next npm run dev re-creates and re-seeds it'",
+    "test": "npm --prefix api test && npm --prefix web run build",
+    "smoke": "node api/scripts/smoke.mjs",
+    "e2e": "cd e2e && BASE_URL=http://localhost:5173 npx playwright test",
+    "docker": "docker compose --profile app up -d --build"
+  }
+}

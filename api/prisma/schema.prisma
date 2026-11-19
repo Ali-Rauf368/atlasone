@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  country     String
+  region      String
+  currency    String
+  industry    String
+  parentId    String?
+  parent      Company?         @relation("Hierarchy", fields: [parentId], references: [id])
+  children    Company[]        @relation("Hierarchy")
+  departments Department[]
+  employees   Employee[]
+  financials  FinancialEntry[]
+  orders      PurchaseOrder[]
+  budgets     Budget[]
+  warehouses  Warehouse[]
+  customers   Customer[]
+}
+
+model Department {
+  id        String     @id @default(cuid())
+  name      String
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  employees Employee[]
+}
+
+model Employee {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  title        String
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id])
+  departmentId String?
+  department   Department?    @relation(fields: [departmentId], references: [id])
+  status       String         @default("ACTIVE") // ONBOARDING | ACTIVE | TERMINATED
+  hiredAt      DateTime       @default(now())
+  salary       Decimal        @default(0) @db.Decimal(18, 2) // monthly, local currency
+  rating       Int? // last performance rating 1-5
+  leaves       LeaveRequest[]
+  attendance   Attendance[]
+}
+
+model LeaveRequest {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  from       DateTime
+  to         DateTime
+  reason     String
+  status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt  DateTime @default(now())
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  date       DateTime @db.Date
+  present    Boolean
+
+  @@unique([employeeId, date])
+}
+
+model JobOpening {
+  id        String   @id @default(cuid())
+  companyId String
+  title     String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+}
+
+model Supplier {
+  id      String @id @default(cuid())
+  name    String @unique
+  country String
+  email   String
+  rating  Int    @default(3)
+}
+
+model Warehouse {
+  id        String          @id @default(cuid())
+  name      String
+  city      String
+  companyId String
+  company   Company         @relation(fields: [companyId], references: [id])
+  items     InventoryItem[]
+}
+
+model InventoryItem {
+  id          String    @id @default(cuid())
+  sku         String
+  name        String
+  quantity    Int
+  reorderAt   Int
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([sku, warehouseId])
+}
+
+model Shipment {
+  id          String   @id @default(cuid())
+  tracking    String   @unique
+  poNumber    String?
+  origin      String
+  destination String
+  status      String   @default("IN_TRANSIT") // IN_TRANSIT | DELIVERED | DELAYED
+  eta         DateTime
+}
+
+model Customer {
+  id        String     @id @default(cuid())
+  name      String
+  country   String
+  industry  String
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  deals     Deal[]
+  contracts Contract[]
+}
+
+model Deal {
+  id         String   @id @default(cuid())
+  title      String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  stage      String   @default("LEAD") // LEAD | QUALIFIED | PROPOSAL | WON | LOST
+  valueUsd   Decimal  @db.Decimal(18, 2)
+  owner      String
+  updatedAt  DateTime @updatedAt
+}
+
+model Contract {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  title      String
+  valueUsd   Decimal  @db.Decimal(18, 2)
+  startsAt   DateTime
+  endsAt     DateTime
+}
+
+enum EntryType {
+  REVENUE
+  EXPENSE
+}
+
+model FinancialEntry {
+  id        String    @id @default(cuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id])
+  period    String // YYYY-MM
+  type      EntryType
+  category  String
+  amount    Decimal   @db.Decimal(18, 2)
+  currency  String
+  amountUsd Decimal   @db.Decimal(18, 2)
+  source    String    @default("manual")
+
+  @@index([companyId, period])
+}
+
+model Budget {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  year      Int
+  amountUsd Decimal @db.Decimal(18, 2)
+  spentUsd  Decimal @default(0) @db.Decimal(18, 2)
+
+  @@unique([companyId, year])
+}
+
+model FxRate {
+  currency String   @id
+  toUsd    Decimal  @db.Decimal(18, 8)
+  updated  DateTime @updatedAt
+}
+
+enum PoStatus {
+  PENDING_APPROVAL
+  APPROVED
+  SENT_TO_SUPPLIER
+  REJECTED
+}
+
+/// Configurable approval chain, picked by PO amount (USD). steps: [{ role, label, slaHours, budgetCheck? }]
+model WorkflowRule {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  minAmountUsd Decimal  @db.Decimal(18, 2)
+  maxAmountUsd Decimal? @db.Decimal(18, 2)
+  steps        Json
+  active       Boolean  @default(true)
+}
+
+model ApprovalStep {
+  id        String        @id @default(cuid())
+  poId      String
+  po        PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  index     Int
+  role      String
+  label     String
+  dueAt     DateTime? // set when the step becomes active
+  decision  String? // APPROVE | REJECT
+  decidedBy String?
+  comment   String?
+  decidedAt DateTime?
+  escalated Boolean       @default(false)
+
+  @@unique([poId, index])
+}
+
+model PurchaseOrder {
+  id          String         @id @default(cuid())
+  number      String         @unique
+  companyId   String
+  company     Company        @relation(fields: [companyId], references: [id])
+  supplier    String
+  description String
+  amount      Decimal        @db.Decimal(18, 2)
+  currency    String
+  amountUsd   Decimal        @db.Decimal(18, 2)
+  status      PoStatus       @default(PENDING_APPROVAL)
+  currentStep Int            @default(0)
+  ruleName    String         @default("")
+  steps       ApprovalStep[]
+  createdBy   String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+/// Country-specific configuration applied to every subsidiary in that country
+model CountryConfig {
+  country              String   @id
+  timezone             String
+  locale               String
+  fiscalYearStartMonth Int      @default(1)
+  vatRate              Decimal  @db.Decimal(5, 2)
+  payrollCycle         String   @default("MONTHLY")
+  dataResidency        String   @default("EU")
+  updatedAt            DateTime @updatedAt
+}

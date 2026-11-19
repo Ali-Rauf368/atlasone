@@ -1,0 +1,81 @@
+dn: ou=people,dc=atlasone,dc=dev
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=atlasone,dc=dev
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=ceo,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: ceo
+cn: Global CEO
+sn: CEO
+mail: ceo@atlasone.dev
+userPassword: password
+
+dn: uid=director,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: director
+cn: Regional Director EU
+sn: Director
+mail: director@atlasone.dev
+ou: Europe
+userPassword: password
+
+dn: uid=manager,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: manager
+cn: Branch Manager Berlin
+sn: Manager
+mail: manager@atlasone.dev
+departmentNumber: DE-TECH
+userPassword: password
+
+dn: uid=finance,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: finance
+cn: Finance Controller
+sn: Finance
+mail: finance@atlasone.dev
+userPassword: password
+
+dn: uid=director.asia,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: director.asia
+cn: Regional Director Asia
+sn: Director
+mail: director.asia@atlasone.dev
+ou: Asia
+userPassword: password
+
+dn: uid=manager.pk,ou=people,dc=atlasone,dc=dev
+objectClass: inetOrgPerson
+uid: manager.pk
+cn: Plant Manager Karachi
+sn: Manager
+mail: manager.pk@atlasone.dev
+departmentNumber: PK-PHARMA
+userPassword: password
+
+dn: cn=GLOBAL_CEO,ou=groups,dc=atlasone,dc=dev
+objectClass: groupOfNames
+cn: GLOBAL_CEO
+member: uid=ceo,ou=people,dc=atlasone,dc=dev
+
+dn: cn=REGIONAL_DIRECTOR,ou=groups,dc=atlasone,dc=dev
+objectClass: groupOfNames
+cn: REGIONAL_DIRECTOR
+member: uid=director,ou=people,dc=atlasone,dc=dev
+member: uid=director.asia,ou=people,dc=atlasone,dc=dev
+
+dn: cn=DEPARTMENT_MANAGER,ou=groups,dc=atlasone,dc=dev
+objectClass: groupOfNames
+cn: DEPARTMENT_MANAGER
+member: uid=manager,ou=people,dc=atlasone,dc=dev
+member: uid=manager.pk,ou=people,dc=atlasone,dc=dev
+
+dn: cn=FINANCE,ou=groups,dc=atlasone,dc=dev
+objectClass: groupOfNames
+cn: FINANCE
+member: uid=finance,ou=people,dc=atlasone,dc=dev

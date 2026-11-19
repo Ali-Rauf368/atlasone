@@ -1,0 +1,77 @@
+// OpenAPI 3.1 description of the public API, served at /api/docs (Swagger UI) and /api/openapi.json
+const bearer = [{ bearerAuth: [] }];
+const ok = (description: string) => ({ 200: { description } });
+const op = (tag: string, summary: string, extra: Record<string, unknown> = {}) => ({ tags: [tag], summary, security: bearer, responses: { ...ok("OK"), 401: { description: "Unauthenticated" }, 403: { description: "Forbidden / out of scope" } }, ...extra });
+const body = (schema: Record<string, unknown>) => ({ requestBody: { required: true, content: { "application/json": { schema } } } });
+const idParam = { parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }] };
+
+export const openapi = {
+  openapi: "3.1.0",
+  info: { title: "AtlasOne API", version: "2.0.0", description: "Global enterprise platform: organisation, finance, HR, supply chain, CRM, BI and governance. Data is scoped by role, region and company." },
+  components: {
+    securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" }, apiKey: { type: "apiKey", in: "header", name: "x-api-key" } },
+    schemas: {
+      Step: { type: "object", required: ["role", "label", "slaHours"], properties: { role: { type: "string" }, label: { type: "string" }, slaHours: { type: "integer" }, budgetCheck: { type: "boolean" } } },
+      Rule: { type: "object", required: ["name", "minAmountUsd", "maxAmountUsd", "steps"], properties: { name: { type: "string" }, minAmountUsd: { type: "number" }, maxAmountUsd: { type: ["number", "null"] }, steps: { type: "array", items: { $ref: "#/components/schemas/Step" } } } },
+    },
+  },
+  paths: {
+    "/api/auth/login": { post: { tags: ["Auth"], summary: "LDAP login, returns JWT", ...body({ type: "object", properties: { username: { type: "string" }, password: { type: "string" } } }), responses: { ...ok("JWT + user"), 401: { description: "Invalid credentials" }, 429: { description: "Too many attempts" } } } },
+    "/api/me": { get: op("Auth", "Current user, roles and scope") },
+    "/api/dashboard/global": { get: op("Intelligence", "CEO KPIs, subsidiary comparison, trend (cached 60s)") },
+    "/api/dashboard/companies": { get: op("Organisation", "Companies in your scope") },
+    "/api/reports/pnl": { get: op("Finance", "P&L per company (USD); ?from&to&format=csv") },
+    "/api/reports/budgets": { get: op("Finance", "Budget utilisation") },
+    "/api/reports/forecast": { get: op("Intelligence", "Least-squares revenue forecast; ?months") },
+    "/api/reports/anomalies": { get: op("Intelligence", "Robust z-score anomalies per subsidiary; ?threshold") },
+    "/api/purchase-orders": {
+      get: op("Procurement", "List POs with approval steps; ?status"),
+      post: op("Procurement", "Create PO; approval chain chosen by amount", body({ type: "object", required: ["companyId", "supplier", "description", "amount"], properties: { companyId: { type: "string" }, supplier: { type: "string" }, description: { type: "string" }, amount: { type: "number" } } })),
+    },
+    "/api/purchase-orders/inbox": { get: op("Procurement", "POs waiting for my decision") },
+    "/api/purchase-orders/{id}/decision": { post: op("Procurement", "Approve/reject current step (409 if already decided, 422 budget exceeded)", { ...idParam, ...body({ type: "object", required: ["decision"], properties: { decision: { enum: ["APPROVE", "REJECT"] }, comment: { type: "string" } } }) }) },
+    "/api/workflow/rules": {
+      get: op("Governance", "Approval matrix"),
+      put: op("Governance", "Replace approval matrix (validated: contiguous bands, budget step required)", body({ type: "array", items: { $ref: "#/components/schemas/Rule" } })),
+    },
+    "/api/audit": { get: op("Governance", "Audit trail; ?action&entityId") },
+    "/api/audit/verify": { get: op("Governance", "Verify the audit hash chain") },
+    "/api/notifications": { get: op("Governance", "Persisted notification inbox") },
+    "/api/notifications/read-all": { post: op("Governance", "Mark all as read") },
+    "/api/hr/employees": { get: op("HR", "Employee directory; ?q&page&companyId"), post: op("HR", "Onboard employee") },
+    "/api/hr/employees/{id}": { patch: op("HR", "Update status/rating/title", idParam) },
+    "/api/hr/distribution": { get: op("HR", "Headcount per subsidiary") },
+    "/api/hr/leave": { get: op("HR", "Leave requests"), post: op("HR", "Request leave") },
+    "/api/hr/leave/{id}/decision": { post: op("HR", "Approve/reject leave", idParam) },
+    "/api/hr/attendance": { get: op("HR", "30-day attendance rate") },
+    "/api/hr/payroll": { get: op("HR", "Monthly payroll per subsidiary") },
+    "/api/hr/recruitment": { get: op("HR", "Job openings"), post: op("HR", "Open position") },
+    "/api/scm/suppliers": { get: op("Supply chain", "Suppliers"), post: op("Supply chain", "Add supplier") },
+    "/api/scm/inventory": { get: op("Supply chain", "Inventory; ?low=true") },
+    "/api/scm/inventory/{id}/adjust": { post: op("Supply chain", "Adjust stock (+/-)", idParam) },
+    "/api/scm/warehouses": { get: op("Supply chain", "Warehouses with stock summary") },
+    "/api/scm/shipments": { get: op("Supply chain", "Shipments") },
+    "/api/scm/shipments/{id}": { patch: op("Supply chain", "Update shipment status", idParam) },
+    "/api/crm/customers": { get: op("CRM", "Customers; ?q"), post: op("CRM", "Add customer") },
+    "/api/crm/pipeline": { get: op("CRM", "Deals grouped by stage") },
+    "/api/crm/deals": { post: op("CRM", "Create deal") },
+    "/api/crm/deals/{id}": { patch: op("CRM", "Move deal stage", idParam) },
+    "/api/crm/contracts": { get: op("CRM", "Contracts") },
+    "/api/crm/performance": { get: op("CRM", "Sales performance by owner") },
+    "/api/auth/logout": { post: op("Auth", "Revoke the current session token") },
+    "/api/org/tree": { get: op("Organisation", "Hierarchy: holding → subsidiaries → departments") },
+    "/api/org/companies": { post: op("Organisation", "Create subsidiary (org:manage)") },
+    "/api/org/companies/{id}/departments": { post: op("Organisation", "Add department", idParam) },
+    "/api/org/countries": { get: op("Organisation", "Countries with their configuration") },
+    "/api/org/countries/{country}": { put: op("Organisation", "Set timezone, locale, fiscal year, VAT, payroll cycle, data residency", { parameters: [{ name: "country", in: "path", required: true, schema: { type: "string" } }] }) },
+    "/api/finance/fx": { get: op("Finance", "FX rates to USD") },
+    "/api/finance/fx/{currency}": { put: op("Finance", "Set FX rate (>20% move requires ?confirm=true)", { parameters: [{ name: "currency", in: "path", required: true, schema: { type: "string" } }] }) },
+    "/api/finance/entries": { get: op("Finance", "Journal entries; ?companyId&period&source"), post: op("Finance", "Post manual journal entry") },
+    "/api/finance/budgets/{companyId}/{year}": { put: op("Finance", "Set annual budget (cannot go below committed spend)") },
+    "/api/reports/custom": { post: op("Intelligence", "Custom report: metric × groupBy × period, JSON or CSV", body({ type: "object", required: ["metric", "groupBy"], properties: { metric: { enum: ["revenue", "expenses", "profit", "margin", "headcount", "po_spend", "pipeline", "won_deals"] }, groupBy: { enum: ["company", "country", "region", "period"] }, from: { type: "string" }, to: { type: "string" }, format: { enum: ["json", "csv"] } } })) },
+    "/api/security/overview": { get: op("Security", "Login activity, suspicious accounts, risky events") },
+    "/api/security/policies": { get: op("Security", "Role-permission matrix and active controls") },
+    "/api/ingest/financials": { post: { tags: ["Integration"], summary: "NiFi: ingest financial rows", security: [{ apiKey: [] }], responses: ok("inserted/errors") } },
+    "/api/ingest/fx-rates": { post: { tags: ["Integration"], summary: "NiFi: upsert FX rates", security: [{ apiKey: [] }], responses: ok("updated") } },
+  },
+};

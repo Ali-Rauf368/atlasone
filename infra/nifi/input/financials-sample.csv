@@ -1,0 +1,4 @@
+companyCode,period,type,category,amount,currency
+DE-TECH,2026-10,REVENUE,Software licenses,1250000,EUR
+PK-PHARMA,2026-10,REVENUE,Generic drugs,310000000,PKR
+US-MFG,2026-10,EXPENSE,Raw materials,820000,USD

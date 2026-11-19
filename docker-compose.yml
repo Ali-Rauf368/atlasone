@@ -1,0 +1,56 @@
+# Infra only:   docker compose up -d
+# Full stack:   docker compose --profile app up -d --build   → http://localhost:8081
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_USER: atlas, POSTGRES_PASSWORD: atlas, POSTGRES_DB: atlasone }
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "atlas"], interval: 5s, retries: 10 }
+  mongo:
+    image: ${MONGO_IMAGE:-mongo:7}   # CPUs without AVX: MONGO_IMAGE=mongo:4.4
+    ports: ["27017:27017"]
+    volumes: [mongodata:/data/db]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  # Local stand-in for Google Workspace Secure LDAP (same LDAP protocol, no client cert needed)
+  ldap:
+    image: osixia/openldap:1.5.0
+    command: --copy-service
+    environment: { LDAP_ORGANISATION: AtlasOne, LDAP_DOMAIN: atlasone.dev, LDAP_ADMIN_PASSWORD: admin }
+    ports: ["389:389"]
+    volumes: ["./infra/ldap/seed.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-seed.ldif"]
+  nifi:
+    image: apache/nifi:1.27.0
+    environment: { NIFI_WEB_HTTP_PORT: "8080" }
+    ports: ["8080:8080"]
+    volumes: ["./infra/nifi/input:/opt/nifi/input"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    ports: ["16686:16686", "4318:4318"]
+
+  api:
+    profiles: [app]
+    build: ./api
+    depends_on: { postgres: { condition: service_healthy }, mongo: { condition: service_started }, redis: { condition: service_started }, ldap: { condition: service_started } }
+    environment:
+      PORT: "4000"
+      DATABASE_URL: postgresql://atlas:atlas@postgres:5432/atlasone
+      MONGO_URL: mongodb://mongo:27017/atlasone
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      INGEST_API_KEY: ${INGEST_API_KEY:-nifi-dev-key}
+      LDAP_URL: ldap://ldap:389
+      LDAP_BASE_DN: dc=atlasone,dc=dev
+      LDAP_BIND_DN: cn=admin,dc=atlasone,dc=dev
+      LDAP_BIND_PASSWORD: admin
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports: ["4000:4000"]
+  web:
+    profiles: [app]
+    build: ./web
+    depends_on: [api]
+    ports: ["8081:80"]
+volumes: { pgdata: {}, mongodata: {} }

@@ -1,0 +1,56 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: api/package-lock.json }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit
+      - run: npm test
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+  e2e:
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: docker compose --profile app up -d --build
+      - name: Seed demo data
+        working-directory: api
+        run: npm ci && npx prisma generate && npm run db:seed
+        env: { DATABASE_URL: "postgresql://atlas:atlas@localhost:5432/atlasone" }
+      - name: Wait for app
+        run: timeout 120 sh -c 'until curl -sf localhost:4000/health; do sleep 3; done'
+      - working-directory: e2e
+        run: npm ci && npx playwright install --with-deps chromium && npx playwright test
+        env: { BASE_URL: "http://localhost:8081" }
+      - if: failure()
+        run: docker compose --profile app logs api
+  docker:
+    if: github.ref == 'refs/heads/main'
+    needs: [e2e]
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - run: |
+          for s in api web; do
+            docker build -t ghcr.io/${{ github.repository }}-$s:${{ github.sha }} ./$s
+            docker push ghcr.io/${{ github.repository }}-$s:${{ github.sha }}
+          done
