@@ -29,6 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: docker compose --profile app up -d --build
+        env: { LOGIN_RATE_LIMIT: "1000" }
       - name: Wait for app
         run: timeout 180 sh -c 'until curl -sf localhost:4000/health; do sleep 3; done'
       - name: Seed demo data
@@ -37,10 +38,17 @@ jobs:
         run: npm ci && npx prisma generate && npx prisma db push --skip-generate && npm run db:seed
         env: { DATABASE_URL: "postgresql://atlas:atlas@localhost:5432/atlasone" }
       - working-directory: e2e
-        run: npm ci && npx playwright install --with-deps chromium && npx playwright test
+        # github reporter turns failures into annotations visible on the run page
+        run: npm ci && npx playwright install --with-deps chromium && npx playwright test --reporter=github,line
         env: { BASE_URL: "http://localhost:8081" }
-      - if: failure()
-        run: docker compose --profile app logs api
+      - name: Smoke test against the containers
+        if: always()
+        run: (cd web && npm ci --silent) && node api/scripts/smoke.mjs http://localhost:4000 | tee smoke.txt; grep FAIL smoke.txt | sed 's/^/::error title=smoke::/' || true
+      - name: Service logs
+        if: failure()
+        run: |
+          docker compose --profile app ps
+          docker compose --profile app logs --no-color api ldap | tail -60 | sed 's/^/::warning title=logs::/'
   docker:
     if: github.ref == 'refs/heads/main'
     needs: [e2e]

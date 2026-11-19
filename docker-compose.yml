@@ -42,6 +42,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       INGEST_API_KEY: ${INGEST_API_KEY:-nifi-dev-key}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-20}
       LDAP_URL: ldap://ldap:389
       LDAP_BASE_DN: dc=atlasone,dc=dev
       LDAP_BIND_DN: cn=admin,dc=atlasone,dc=dev
